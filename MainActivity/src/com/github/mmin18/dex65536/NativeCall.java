@@ -8,7 +8,4 @@ public class NativeCall {
 		System.loadLibrary("my_lib");
 	}
 
-	public native int add(int i, int j);
-	public native String stringFromJNI(Context context);
-
 }
