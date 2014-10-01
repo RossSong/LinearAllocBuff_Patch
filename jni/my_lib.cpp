@@ -31,6 +31,7 @@
 #include "Globals.h"
 #include <sys/mman.h>
 #include <errno.h>
+#include <sys/types.h>
 
 #undef log
 
@@ -103,7 +104,43 @@ INLINE void dvmUnlockMutex(pthread_mutex_t* pMutex)
     assert(cc == 0);
 }
 
-#include <sys/types.h>
+bool CheckVersion(JNIEnv* env)
+{
+    if( NULL == env ) return false;
+
+    if(env->ExceptionCheck())
+        return false; // already got an exception pending
+
+    // VERSION is a nested class within android.os.Build (hence "$" rather than "/")
+    jclass versionClass = env->FindClass("android/os/Build$VERSION");
+    if (NULL == versionClass)
+    {
+        log("%s", "not found versionClass");
+        return false;
+    }
+
+    jfieldID ReleaseFieldID = NULL;
+    if(NULL == (ReleaseFieldID = env->GetStaticFieldID(versionClass, "RELEASE", "Ljava/lang/String;")))
+    {
+        log("%s", "not found Buidl.VERSION.RELEASE");
+        return false;
+    }
+
+    jstring release  = (jstring)env->GetStaticObjectField(versionClass, ReleaseFieldID);
+    const char *nativeRelease = env->GetStringUTFChars(release, 0);
+
+    log("Build.VERSION.RELEASE: %s", nativeRelease);
+    if( 0 == strncmp(nativeRelease, "2.3", 3) )
+    {
+        log("%s", "Do Patch!");
+        env->ReleaseStringUTFChars(release, 0);
+        return true;
+    }
+
+    log("%s", "No Patch!");
+    return false;
+}
+
 
 void SwapLinearAllocBuffer(LinearAllocHdr *pHdr)
 {
@@ -164,61 +201,47 @@ void SwapLinearAllocBuffer(LinearAllocHdr *pHdr)
 jint JNI_OnLoad(JavaVM * vm, void* reserved)
 {
 	char buff[1024] = {0x00,};
-	struct DvmGlobals *t_gDvm = NULL;
+        struct DvmGlobals *t_gDvm = NULL;
+        JNIEnv* env;
 
-	void * handle = dlopen("libdvm.so", RTLD_NOW);
-	snprintf(buff, 1024, "handle is 0x%x", handle);
-	log("%s", buff);
-	
-	//DvmGlobals 구조체를 얻는다.
-	t_gDvm = (struct DvmGlobals *)dlsym(handle, "gDvm");
+        if( vm->GetEnv((void**)&env, JNI_VERSION_1_6 ) != JNI_OK)
+                return -1;
 
-	if( t_gDvm )
-	{
-		if( NULL == t_gDvm->pBootLoaderAlloc )
-			return -1;
+        if( false == CheckVersion(env) )
+                return JNI_VERSION_1_6;
 
-		snprintf(buff, 1024, "t_gDvm: %p , addr: %p t_gDvm->pBootLoaderAlloc: 0x%x", t_gDvm, &(t_gDvm->pBootLoaderAlloc), t_gDvm->pBootLoaderAlloc);
-		log("%s", buff);
-		snprintf(buff, 1024, "mapAddr: %p mapLength: 0x%x", t_gDvm->pBootLoaderAlloc->mapAddr, t_gDvm->pBootLoaderAlloc->mapLength);
-		log("%s", buff);
+        void * handle = dlopen("libdvm.so", RTLD_NOW);
+        snprintf(buff, 1024, "handle is 0x%x", handle);
+        log("%s", buff);
 
-		log("%s", "Try to change LinearAlloc buffer.");
+        //DvmGlobals 구조체를 얻는다.
+        t_gDvm = (struct DvmGlobals *)dlsym(handle, "gDvm");
 
-		//Change Linear Alloc Buffer!!
-		SwapLinearAllocBuffer(t_gDvm->pBootLoaderAlloc);
+        if( t_gDvm )
+        {
+                if( NULL == t_gDvm->pBootLoaderAlloc )
+                        return -1;
 
-		log("%s", "Success to change LinearAlloc Buffer.");
-		snprintf(buff, 1024, "mapAddr: %p mapLength: 0x%x", t_gDvm->pBootLoaderAlloc->mapAddr, t_gDvm->pBootLoaderAlloc->mapLength);
-		log("%s", buff);
-	}
-	else
-	{
-		log("%s", "Error!! - t_gDvm is NULL");
-	}
+                snprintf(buff, 1024, "t_gDvm: %p , addr: %p t_gDvm->pBootLoaderAlloc: 0x%x", t_gDvm, &(t_gDvm->pBootLoaderAlloc), t_gDvm->pBootLoaderAlloc);
+                log("%s", buff);
+                snprintf(buff, 1024, "mapAddr: %p mapLength: 0x%x", t_gDvm->pBootLoaderAlloc->mapAddr, t_gDvm->pBootLoaderAlloc->mapLength);
+                log("%s", buff);
 
-	JNIEnv* env;
-	if( vm->GetEnv((void**)&env, JNI_VERSION_1_6 ) != JNI_OK)
-		return -1;
-	
-	log("%s", "JNI INIT");
-	return JNI_VERSION_1_6;
+                log("%s", "Try to change LinearAlloc buffer.");
+
+                //Change Linear Alloc Buffer!!
+                SwapLinearAllocBuffer(t_gDvm->pBootLoaderAlloc);
+
+                log("%s", "Success to change LinearAlloc Buffer.");
+                snprintf(buff, 1024, "mapAddr: %p mapLength: 0x%x", t_gDvm->pBootLoaderAlloc->mapAddr, t_gDvm->pBootLoaderAlloc->mapLength);
+                log("%s", buff);
+        }
+        else
+        {
+                log("%s", "Error!! - t_gDvm is NULL");
+        }
+
+        log("%s", "JNI INIT");
+        return JNI_VERSION_1_6;
+
 }
-
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-JNIEXPORT jstring JNICALL Java_com_example_ndktest_NativeCall_stringFromJNI(JNIEnv *env, jobject obj, jobject obj_Context)
-{
-    return env->NewStringUTF("Hello JNI!!!!!");
-}
-
-JNIEXPORT jint JNICALL Java_com_example_ndktest_NativeCall_add(JNIEnv *env, jobject obj, jint i, jint j)
-{
-    return i + j;
-}
-
-#ifdef __cplusplus
-}
-#endif
