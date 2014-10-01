@@ -147,12 +147,12 @@ void SwapLinearAllocBuffer(LinearAllocHdr *pHdr)
 
     log("%s", "memcpy");//
  
-    if (munmap(oldPtr, pHdr->mapLength) != 0) {
+    /*if (munmap(oldPtr, pHdr->mapLength) != 0) {
         ALOGW("LinearAlloc munmap(%p, %d) failed: %s",
             oldPtr, pHdr->mapLength, strerror(errno));
     }
 
-    log("%s", "oldPtr munmap\n");//
+    log("%s", "oldPtr munmap\n");*/
 
     pHdr->mapLength = DEFAULT_MAX_LENGTH;
     dvmUnlockMutex(&pHdr->lock);
